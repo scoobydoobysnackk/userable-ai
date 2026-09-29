@@ -1,5 +1,23 @@
 import { useState } from "react";
-import { Check, Copy, Download, Terminal, User } from "lucide-react";
+import { Check, Copy, Download } from "lucide-react";
+
+import {
+  Attachment,
+  AttachmentPreview,
+  Attachments,
+} from "@/components/ai-elements/attachments";
+import {
+  Message as AiMessage,
+  MessageContent,
+  MessageResponse,
+} from "@/components/ai-elements/message";
+import { Shimmer } from "@/components/ai-elements/shimmer";
+
+export type MessageImage = {
+  dataUrl: string;
+  mimeType: string;
+  name: string;
+};
 
 type Segment = { type: "text" | "code"; content: string; lang?: string };
 
@@ -82,77 +100,66 @@ function CodeBlock({ code }: { code: string }) {
   );
 }
 
-function InlineText({ text }: { text: string }) {
-  return (
-    <div className="space-y-2 whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-      {text
-        .trim()
-        .split(/\n{2,}/)
-        .map((block, i) => (
-          <p key={i}>
-            {block.split(/(`[^`]+`)/g).map((part, j) =>
-              part.startsWith("`") && part.endsWith("`") && part.length > 2 ? (
-                <code
-                  key={j}
-                  className="rounded bg-muted px-1.5 py-0.5 font-mono text-[12px] text-accent"
-                >
-                  {part.slice(1, -1)}
-                </code>
-              ) : (
-                <span key={j}>{part.replace(/\*\*/g, "").replace(/^#+\s*/gm, "")}</span>
-              ),
-            )}
-          </p>
-        ))}
-    </div>
-  );
-}
-
 export function Message({
   role,
   content,
+  images = [],
   streaming,
 }: {
   role: "user" | "assistant";
   content: string;
+  images?: MessageImage[];
   streaming?: boolean;
 }) {
   const segments = parseSegments(content);
 
   if (role === "user") {
     return (
-      <div className="flex justify-end gap-3">
-        <div className="max-w-[85%] rounded-lg rounded-tr-none border border-border bg-secondary px-4 py-3 text-sm leading-relaxed whitespace-pre-wrap text-secondary-foreground">
-          {content}
-        </div>
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-card text-muted-foreground">
-          <User className="size-4" />
-        </div>
-      </div>
+      <AiMessage from="user">
+        {images.length > 0 && (
+          <Attachments className="max-w-full" variant="grid">
+            {images.map((image) => (
+              <Attachment
+                data={{
+                  type: "file",
+                  url: image.dataUrl,
+                  mediaType: image.mimeType,
+                  filename: image.name,
+                  id: image.dataUrl.slice(-32),
+                }}
+                key={`${image.name}-${image.dataUrl.slice(-16)}`}
+              >
+                <AttachmentPreview />
+              </Attachment>
+            ))}
+          </Attachments>
+        )}
+        {content && (
+          <MessageContent className="border border-border bg-secondary text-secondary-foreground whitespace-pre-wrap">
+            {content}
+          </MessageContent>
+        )}
+      </AiMessage>
     );
   }
 
   return (
-    <div className="flex gap-3">
-      <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border border-primary/40 bg-primary/10 text-primary">
-        <Terminal className="size-4" />
-      </div>
-      <div className="min-w-0 flex-1 space-y-3">
+    <AiMessage from="assistant" className="max-w-full">
+      <MessageContent className="w-full">
         {segments.length === 0 && streaming ? (
-          <p className="font-mono text-sm text-muted-foreground">
-            compiling
-            <span className="caret-blink">_</span>
-          </p>
+          <Shimmer className="font-mono text-sm">Thinking...</Shimmer>
         ) : (
           segments.map((segment, i) =>
             segment.type === "code" ? (
               <CodeBlock key={i} code={segment.content} />
             ) : (
-              <InlineText key={i} text={segment.content} />
+              <MessageResponse className="text-sm leading-relaxed" key={i}>
+                {segment.content}
+              </MessageResponse>
             ),
           )
         )}
-      </div>
-    </div>
+      </MessageContent>
+    </AiMessage>
   );
 }
