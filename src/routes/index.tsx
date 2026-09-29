@@ -232,7 +232,7 @@ function Userable() {
               </div>
             </div>
           ) : (
-            {messages.map((message, i) => (
+            messages.map((message, i) => (
               <Message
                 key={i}
                 role={message.role}
@@ -240,7 +240,7 @@ function Userable() {
                 images={message.images}
                 streaming={streaming && i === messages.length - 1}
               />
-            ))}
+            ))
           )}
 
           {error && (
