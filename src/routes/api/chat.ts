@@ -8,6 +8,17 @@ import {
 
 const MODEL = "openai/gpt-6-astra";
 
+const MAX_IMAGES = 4;
+const MAX_IMAGE_DATA_LENGTH = 7_000_000;
+const IMAGE_DATA_URL = /^data:(image\/(?:png|jpeg|webp|gif));base64,[A-Za-z0-9+/=]+$/;
+
+type IncomingImage = { dataUrl: string; mimeType: string; name: string };
+type IncomingMessage = {
+  role: "user" | "assistant";
+  content: string;
+  images?: IncomingImage[];
+};
+
 const SYSTEM_PROMPT = `You are Userable: a sharp, friendly general-purpose AI assistant who happens to be a world-class userscript engineer (Tampermonkey first, also Violentmonkey/Greasemonkey).
 
 Conversation behavior:
@@ -41,7 +52,7 @@ export const Route = createFileRoute("/api/chat")({
           });
         }
 
-        let body: { messages?: { role: string; content: string }[] };
+        let body: { messages?: unknown };
         try {
           body = await request.json();
         } catch {
@@ -51,13 +62,49 @@ export const Route = createFileRoute("/api/chat")({
           });
         }
 
-        const messages = (body.messages ?? [])
-          .filter(
-            (m) =>
-              (m.role === "user" || m.role === "assistant") && typeof m.content === "string",
-          )
+        if (!Array.isArray(body.messages)) {
+          return new Response(JSON.stringify({ error: "No messages provided." }), {
+            status: 400,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+
+        const messages = body.messages
+          .filter((message): message is IncomingMessage => {
+            if (!message || typeof message !== "object") return false;
+            const candidate = message as Partial<IncomingMessage>;
+            return (
+              (candidate.role === "user" || candidate.role === "assistant") &&
+              typeof candidate.content === "string"
+            );
+          })
           .slice(-20)
-          .map((m) => ({ role: m.role, content: m.content }));
+          .map((message) => {
+            const validImages = (message.images ?? [])
+              .filter(
+                (image) =>
+                  image &&
+                  typeof image.dataUrl === "string" &&
+                  image.dataUrl.length <= MAX_IMAGE_DATA_LENGTH &&
+                  IMAGE_DATA_URL.test(image.dataUrl),
+              )
+              .slice(0, MAX_IMAGES);
+
+            if (message.role === "user" && validImages.length > 0) {
+              return {
+                role: message.role,
+                content: [
+                  { type: "input_text", text: message.content || "Please inspect these images." },
+                  ...validImages.map((image) => ({
+                    type: "input_image",
+                    image_url: image.dataUrl,
+                  })),
+                ],
+              };
+            }
+
+            return { role: message.role, content: message.content };
+          });
 
         if (messages.length === 0) {
           return new Response(JSON.stringify({ error: "No messages provided." }), {
