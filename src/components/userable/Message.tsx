@@ -108,7 +108,7 @@ export function Message({
 }: {
   role: "user" | "assistant";
   content: string;
-  images?: MessageImage[];
+  images?: MessageImage[] | undefined;
   streaming?: boolean;
 }) {
   const segments = parseSegments(content);
